@@ -41,8 +41,6 @@ def load_price_data(tickers, years_back):
     raw = yf.download(list(tickers), start=start_date, end=end_date, progress=False, auto_adjust=True)["Close"]
     if isinstance(raw, pd.Series):
         raw = raw.to_frame(tickers[0])
-    # ตลาดต่างประเทศมีวันหยุดคนละวัน (เช่น SET ปิดวันหนึ่ง แต่ NYSE เปิด) -- forward-fill
-    # ราคาล่าสุดแทนที่จะทิ้งทั้งแถว ไม่งั้นข้อมูลจะหายเยอะเกินไปเมื่อผสมหลายตลาด
     raw = raw.ffill()
     valid = [t for t in tickers if t in raw.columns and raw[t].notna().sum() >= 30]
     return raw[valid].dropna(), valid
@@ -102,16 +100,6 @@ def load_market_caps(tickers):
             caps[t] = None
     return caps
 
-    import yfinance as yf
-    caps = {}
-    for t in tickers:
-        try:
-            caps[t] = yf.Ticker(t).info.get("sharesOutstanding")
-        except Exception:
-            caps[t] = None
-    return caps
-
-
 
 def get_weights(train_ret, train_last_price, shares_arr, n, use_marketcap):
     mu, cov = train_ret.mean(), train_ret.cov()
@@ -150,7 +138,7 @@ def run_walk_forward(data, shares_arr, use_marketcap, train_window, test_window)
     all_returns = data.pct_change().dropna()
     n = data.shape[1]
     records, failed = [], 0
-    daily_returns = {}  # strategy -> list of daily-return Series, one per fold (test period only)
+    daily_returns = {}
     last_weights = {}
     start, round_num = 0, 0
     while start + train_window + test_window <= len(all_returns):
@@ -173,8 +161,7 @@ def run_walk_forward(data, shares_arr, use_marketcap, train_window, test_window)
 
 
 def cumulative_growth(daily_returns, capital, cost_pct, test_window):
-    """เงินลงทุนสะสมแบบทบต้น ต่อเนื่องข้ามทุกรอบ test (ไม่ใช่แยกรอบแบบตาราง Sharpe) หัก
-    ค่าธรรมเนียมที่จุดปรับสมดุลพอร์ตทุกครั้ง (ทุกจุดเริ่มรอบใหม่ ยกเว้นจุดเริ่มต้นแรกสุด)"""
+    """เงินลงทุนสะสมแบบทบต้น ต่อเนื่องข้ามทุกรอบ test หักค่าธรรมเนียมที่จุดปรับสมดุลพอร์ตทุกครั้ง"""
     curves = {}
     for name, ret_series in daily_returns.items():
         equity, values = capital, []
@@ -429,3 +416,4 @@ st.caption(
     "ยังไม่รวมภาษี เครื่องมือนี้จัดทำเพื่อการศึกษาในโครงงานวิทยาศาสตร์ "
     "ไม่ใช่คำแนะนำการลงทุน"
 )
+
