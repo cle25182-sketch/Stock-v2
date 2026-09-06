@@ -86,13 +86,22 @@ def efficient_frontier_fig(all_returns, weights_by_name, n_portfolios=3000):
     ax.set_xlabel("Risk / annualized volatility (%)")
     ax.set_ylabel("Expected annual return (%)")
     ax.set_title("Efficient Frontier (based on full-period data, current weights)")
-        ax.legend(loc="lower right", fontsize=9)
+    ax.legend(loc="lower right", fontsize=9)
     plt.tight_layout()
     return fig
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_market_caps(tickers):
+    import yfinance as yf
+    caps = {}
+    for t in tickers:
+        try:
+            caps[t] = yf.Ticker(t).info.get("sharesOutstanding")
+        except Exception:
+            caps[t] = None
+    return caps
+
     import yfinance as yf
     caps = {}
     for t in tickers:
