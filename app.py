@@ -6,125 +6,12 @@ from scipy import stats
 from datetime import datetime, timedelta
 import streamlit as st
 
-# Setup page config
-st.set_page_config(
-    page_title="THE FINANCIAL GAZETTE & STOCK CHRONICLE (1602)",
-    page_icon="📜",
-    layout="wide"
-)
-
-# Custom Vintage Newspaper CSS
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Sarabun:wght@300;400;600&display=swap');
-
-    /* Background and Global Font */
-    .stApp {
-        background-color: #f4ebd9 !important;
-        color: #1a1612 !important;
-        font-family: 'Playfair Display', 'Georgia', 'Sarabun', serif !important;
-    }
-    
-    /* Sidebar Vintage Style */
-    [data-testid="stSidebar"] {
-        background-color: #eaedd5 !important;
-        background-color: #e8dcc4 !important;
-        border-right: 3px double #3d2f1d !important;
-    }
-    
-    /* Newspaper Masthead Header */
-    .masthead {
-        text-align: center;
-        border-top: 4px double #2b2013;
-        border-bottom: 4px double #2b2013;
-        padding: 15px 0px;
-        margin-bottom: 25px;
-    }
-    .masthead-sub {
-        font-family: 'Cinzel', serif;
-        font-size: 0.85rem;
-        letter-spacing: 3px;
-        text-transform: uppercase;
-        border-bottom: 1px solid #2b2013;
-        border-top: 1px solid #2b2013;
-        padding: 4px 0;
-        margin: 10px 0;
-    }
-    .masthead-title {
-        font-family: 'Cinzel', serif;
-        font-size: 2.8rem;
-        font-weight: 900;
-        color: #1a1612;
-        letter-spacing: 2px;
-        text-transform: uppercase;
-        line-height: 1.1;
-    }
-    
-    /* Vintage Breaking News Winner Box */
-    .winner-box {
-        background-color: #ebdcc1;
-        border: 3px double #3d2f1d;
-        padding: 22px;
-        margin-bottom: 25px;
-        box-shadow: 4px 4px 0px #3d2f1d;
-    }
-    .badge-winner {
-        background-color: #5c1d1d;
-        color: #f4ebd9;
-        padding: 4px 12px;
-        font-family: 'Cinzel', serif;
-        font-size: 0.85rem;
-        font-weight: bold;
-        letter-spacing: 1px;
-        text-transform: uppercase;
-    }
-    
-    /* Metric styling */
-    div[data-testid="stMetricValue"] {
-        font-family: 'Cinzel', 'Georgia', serif !important;
-        color: #5c1d1d !important;
-        font-weight: bold !important;
-    }
-    
-    /* Buttons */
-    .stButton > button {
-        background-color: #3d2f1d !important;
-        color: #f4ebd9 !important;
-        border: 2px solid #1a1612 !important;
-        font-family: 'Cinzel', serif !font-weight: bold;
-        border-radius: 0px !important;
-        box-shadow: 3px 3px 0px #1a1612;
-    }
-    .stButton > button:hover {
-        background-color: #5c1d1d !important;
-        color: #ffffff !important;
-    }
-    
-    /* Expander styling */
-    .streamlit-expanderHeader {
-        background-color: #e6d5b8 !important;
-        border: 1px solid #3d2f1d !important;
-        font-family: 'Cinzel', serif !important;
-    }
-
-    /* Headings */
-    h1, h2, h3, h4 {
-        font-family: 'Cinzel', serif !important;
-        color: #2b2013 !important;
-        font-weight: 700 !important;
-    }
-    
-    /* Divider line */
-    hr {
-        border-top: 2px solid #3d2f1d !important;
-    }
-</style>
-""", unsafe_allow_html=True)
+st.set_page_config(page_title="จัดพอร์ตหุ้นฉบับนักเรียน", page_icon="📈", layout="wide")
 
 RF_RATE = 0.0
 
 # ------------------------------------------------------------------
-# Functions (Backtest & Data Engine)
+# ส่วนคำนวณ
 # ------------------------------------------------------------------
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -142,6 +29,7 @@ def load_price_data(tickers, years_back):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_benchmark(years_back):
+    """ดัชนี SET Index จริง ใช้เป็นเกณฑ์เทียบภายนอก (ไม่ใช่ S&P 500 เพราะหุ้นที่วิเคราะห์เป็นหุ้นไทย)"""
     import yfinance as yf
     end_date = datetime.today().strftime("%Y-%m-%d")
     start_date = (datetime.today() - timedelta(days=years_back * 365)).strftime("%Y-%m-%d")
@@ -164,6 +52,17 @@ def load_market_caps(tickers):
         except Exception:
             caps[t] = None
     return caps
+
+
+def _clean_shares(v):
+    """None และ NaN ทั้งคู่ถือว่า 'ไม่มีข้อมูล' -- ป้องกัน NaN แอบหลุดเข้าไปคำนวณ (NaN เป็น truthy ใน Python
+    เช็คด้วย `if v` เฉยๆ จะจับ NaN ไม่ได้)"""
+    if v is None:
+        return None
+    try:
+        return None if np.isnan(v) else v
+    except TypeError:
+        return v
 
 
 def get_weights(train_ret, train_last_price, shares_arr, n, use_marketcap):
@@ -210,19 +109,21 @@ def run_walk_forward(data, shares_arr, use_marketcap, train_window, test_window)
         round_num += 1
         train_ret = all_returns.iloc[start: start + train_window]
         test_ret = all_returns.iloc[start + train_window: start + train_window + test_window]
-        train_last_price = data.iloc[start + train_window - 1].values
+        # แก้บั๊ก off-by-one: ราคาสุดท้ายที่ "จริงๆ" อยู่ในช่วง train คือ index [start+train_window]
+        # ไม่ใช่ [start+train_window-1] (ซึ่งจะเป็นราคาของวันก่อนหน้านั้นแทน)
+        train_last_price = data.iloc[start + train_window].values
         weights, ok = get_weights(train_ret, train_last_price, shares_arr, n, use_marketcap)
         failed += 0 if ok else 1
         last_weights = weights
         for name, w in weights.items():
             total, ar, av, sh, mdd = evaluate(w, test_ret)
             records.append({
-                "round": round_num, 
-                "strategy": name, 
+                "round": round_num,
+                "strategy": name,
                 "total_return": total,
-                "ann_return": ar, 
-                "ann_vol": av, 
-                "sharpe": sh, 
+                "ann_return": ar,
+                "ann_vol": av,
+                "sharpe": sh,
                 "max_drawdown": mdd
             })
             port_ret_series = pd.Series(test_ret.values @ w, index=test_ret.index)
@@ -245,26 +146,6 @@ def cumulative_growth(daily_returns, capital, cost_pct, test_window):
     return curves
 
 
-def style_fig_vintage(fig, ax):
-    """ฟังก์ชันปรับแต่งกราฟ Matplotlib ให้อยู่ในธีมหนังสือพิมพ์โบราณ"""
-    fig.patch.set_facecolor('#f4ebd9')
-    ax.set_facecolor('#fdfaf3')
-    ax.spines['top'].set_color('#3d2f1d')
-    ax.spines['bottom'].set_color('#3d2f1d')
-    ax.spines['left'].set_color('#3d2f1d')
-    ax.spines['right'].set_color('#3d2f1d')
-    ax.spines['top'].set_linewidth(1.2)
-    ax.spines['bottom'].set_linewidth(1.2)
-    ax.spines['left'].set_linewidth(1.2)
-    ax.spines['right'].set_linewidth(1.2)
-    ax.xaxis.label.set_color('#2b2013')
-    ax.yaxis.label.set_color('#2b2013')
-    ax.title.set_color('#2b2013')
-    ax.tick_params(colors='#2b2013', labelsize=9)
-    for label in ax.get_xticklabels() + ax.get_yticklabels():
-        label.set_fontfamily('serif')
-
-
 def efficient_frontier_fig(all_returns, weights_by_name, n_portfolios=2500):
     mu, cov = all_returns.mean().values, all_returns.cov().values
     n = len(mu)
@@ -276,247 +157,222 @@ def efficient_frontier_fig(all_returns, weights_by_name, n_portfolios=2500):
         port_ret = w @ mu * 252
         port_vol = np.sqrt(max(w @ cov @ w, 0)) * np.sqrt(252)
         res[i] = [port_vol, port_ret, port_ret / port_vol if port_vol > 1e-10 else 0]
-    
+
     fig, ax = plt.subplots(figsize=(7.5, 4.5))
-    sc = ax.scatter(res[:, 0] * 100, res[:, 1] * 100, c=res[:, 2], cmap="copper", s=6, alpha=0.6)
-    cb = plt.colorbar(sc, ax=ax)
-    cb.set_label("Sharpe ratio (คะแนนความคุ้มค่า)", color="#2b2013", family='serif')
-    cb.ax.yaxis.set_tick_params(color='#2b2013')
-    plt.setp(plt.getp(cb.ax, 'yticklabels'), color='#2b2013', family='serif')
+    sc = ax.scatter(res[:, 0] * 100, res[:, 1] * 100, c=res[:, 2], cmap="viridis", s=6, alpha=0.6)
+    plt.colorbar(sc, ax=ax, label="Sharpe ratio")
 
     markers = list("o*D^v<>")
     for idx, (name, w) in enumerate(weights_by_name.items()):
         port_ret = w @ mu * 252
         port_vol = np.sqrt(max(w @ cov @ w, 0)) * np.sqrt(252)
         ax.scatter(port_vol * 100, port_ret * 100, marker=markers[idx % len(markers)], s=200,
-                   edgecolor="#1a1612", color="#5c1d1d", linewidth=1.5, label=name.split(" ")[0], zorder=5)
-    
-    ax.set_xlabel("Volatility / ความผันผวนต่อปี (%)", family='serif')
-    ax.set_ylabel("Expected Return / ผลตอบแทนคาดหวังต่อปี (%)", family='serif')
-    ax.set_title("Efficient Frontier (ความสัมพันธ์ระหว่างความเสี่ยงและผลตอบแทน)", family='serif', weight='bold')
-    ax.legend(loc="lower right", fontsize=8, facecolor='#f4ebd9', edgecolor='#3d2f1d')
-    style_fig_vintage(fig, ax)
+                   edgecolor="black", linewidth=1.3, label=name.split(" ")[0], zorder=5)
+
+    ax.set_xlabel("Volatility / ความผันผวนต่อปี (%)")
+    ax.set_ylabel("Expected Return / ผลตอบแทนคาดหวังต่อปี (%)")
+    ax.set_title("Efficient Frontier")
+    ax.legend(loc="lower right", fontsize=8)
     plt.tight_layout()
     return fig
 
 
 # ------------------------------------------------------------------
-# Vintage Newspaper UI Structure
+# UI
 # ------------------------------------------------------------------
 
-# Header Banner
-st.markdown("""
-<div class="masthead">
-    <div class="masthead-title">THE FINANCIAL GAZETTE</div>
-    <div class="masthead-sub">
-        <span>VOL. CXXIV NO. 1602</span> &nbsp;•&nbsp; 
-        <span>หนังสือพิมพ์ข่าวสารการเงินและจัดพอร์ตหุ้น</span> &nbsp;•&nbsp; 
-        <span>EST. ค.ศ. 1602</span>
-    </div>
-    <p style="font-style: italic; font-size: 0.95rem; color: #4a3823; margin-bottom: 0;">
-        "การกระจายความเสี่ยงอย่างชาญฉลาด คือหนทางสู่ความมั่งคั่งอันยั่งยืนแห่งยุคสมัย"
-    </p>
-</div>
-""", unsafe_allow_html=True)
+st.title("📈 เว็บแอปจัดพอร์ตหุ้นฉบับนักเรียน")
+st.caption(
+    "เปรียบเทียบ 3 วิธีแบ่งเงินลงทุนในหุ้น: แบ่งเท่ากัน (Equal-weight), "
+    "คำนวณสัดส่วนที่เหมาะสมที่สุดด้วยสูตร Markowitz, และถ่วงน้ำหนักตามมูลค่าบริษัท (Market-cap) "
+    "ทดสอบด้วยข้อมูลราคาหุ้นจริงย้อนหลัง แบบ walk-forward validation"
+)
 
 with st.sidebar:
-    st.markdown("### 📜 ประกาศจากหอการค้า")
-    st.caption("กรอกรายละเอียดเงินทุนและหุ้นเพื่อคำนวณ")
-    
-    capital = st.number_input("💵 เงินลงทุนเริ่มต้น (บาท)", min_value=1000, value=100000, step=5000)
+    st.header("ตั้งค่า")
+    capital = st.number_input("เงินลงทุนเริ่มต้น (บาท)", min_value=1000, value=5000, step=500)
     ticker_input = st.text_input(
-        "📌 พิมพ์รหัสหุ้น (คั่นด้วย comma ,)",
+        "พิมพ์รหัสหุ้น (คั่นด้วยจุลภาค ,)",
         value="PTT.BK, CPALL.BK, AOT.BK, KBANK.BK, ADVANC.BK",
         help="ใส่รหัสหุ้น เช่น PTT.BK, CPALL.BK สำหรับหุ้นไทย หรือ AAPL, TSLA สำหรับหุ้นสหรัฐฯ"
     )
     selected = list(dict.fromkeys([t.strip().upper() for t in ticker_input.split(",") if t.strip()]))
-    
-    with st.expander("⚙️ ตั้งค่าคณิตศาสตร์เชิงลึก"):
-        train_window = st.slider("ช่วงเรียนรู้ Train (วัน)", 126, 378, 252, step=21)
-        test_window = st.slider("ช่วงทดสอบจริง Test (วัน)", 21, 126, 63, step=21)
-        years_back = st.slider("ข้อมูลย้อนหลัง (ปี)", 3, 10, 6)
-        cost_pct = st.slider("ค่าธรรมเนียมซื้อขาย (%)", 0.0, 1.0, 0.15, step=0.05) / 100
+
+    with st.expander("ตั้งค่าขั้นสูง (ไม่บังคับ)"):
+        train_window = st.slider("ช่วง train (วันทำการ)", 126, 378, 252, step=21,
+                                  help="จำนวนวันย้อนหลังที่ใช้คำนวณสัดส่วนก่อนแต่ละรอบทดสอบ")
+        test_window = st.slider("ช่วง test ต่อรอบ (วันทำการ)", 21, 126, 63, step=21,
+                                 help="จำนวนวันที่ใช้ทดสอบสัดส่วนที่คำนวณได้ ต่อ 1 รอบ")
+        years_back = st.slider("ข้อมูลย้อนหลังกี่ปี", 3, 10, 6)
+        cost_pct = st.slider("ค่าธรรมเนียมการซื้อขายต่อการปรับสมดุลพอร์ต (%)", 0.0, 1.0, 0.1, step=0.05,
+                              help="หักออกจากมูลค่าพอร์ตทุกครั้งที่ปรับสัดส่วนใหม่ ในกราฟเงินโตสะสม") / 100
         stress_option = st.selectbox(
-            "ทดสอบความแข็งแกร่งยุควิกฤต",
-            ["ไม่ระบุ", "COVID-19 (ก.พ.–เม.ย. 2563)", "สงครามการค้าจีน-สหรัฐฯ (ม.ค.–ธ.ค. 2561)"]
+            "ทดสอบเฉพาะช่วงวิกฤต (ไม่บังคับ)",
+            ["ไม่ระบุ", "COVID-19 (ก.พ.–เม.ย. 2563)", "สงครามการค้าจีน-สหรัฐฯ (ม.ค.–ธ.ค. 2561)"],
+            help="ประเมินด้วยสัดส่วนล่าสุดที่คำนวณได้ ว่าถ้าเจอเฉพาะช่วงนี้ผลจะเป็นอย่างไร",
         )
-        
-    run = st.button("📰 ตีพิมพ์รายงานวิเคราะห์", type="primary", use_container_width=True)
+
+    run = st.button("🚀 เริ่มวิเคราะห์", type="primary", use_container_width=True)
+    st.caption("ข้อมูลราคาหุ้นดึงสดจาก Yahoo Finance ทุกครั้งที่กดรัน (แคชไว้ 1 ชั่วโมง)")
 
 if not run:
-    st.info("📜 **คำแนะนำ:** กรอกเงินทุนและหุ้นทางแถบซ้ายมือ จากนั้นกด **'ตีพิมพ์รายงานวิเคราะห์'** เพื่ออ่านฉบับเต็ม")
+    st.info("ตั้งค่าทางซ้าย แล้วกด **เริ่มวิเคราะห์** เพื่อดูผลเปรียบเทียบ")
     st.stop()
 
 if len(selected) < 2:
-    st.error("⚠️ กรุณาเลือกหุ้นอย่างน้อย 2 ตัวขึ้นไป เพื่อทำการกระจายความเสี่ยง")
+    st.error("กรุณาเลือกหุ้นอย่างน้อย 2 ตัว")
     st.stop()
 
-with st.spinner("📜 กำลังค้นหารายงานราคาหุ้นย้อนหลังตามบันทึก..."):
+with st.spinner("กำลังดึงราคาหุ้นย้อนหลัง..."):
     try:
         data, valid_tickers = load_price_data(tuple(selected), years_back)
     except Exception as e:
-        st.error(f"ไม่สามารถดึงข้อมูลหุ้นได้: {e}")
+        st.error(f"ดึงข้อมูลราคาหุ้นไม่สำเร็จ: {e}")
         st.stop()
 
 missing = [t for t in selected if t not in valid_tickers]
 if missing:
-    st.warning(f"⚠️ ไม่พบข้อมูลหุ้นบางตัว จึงถูกตัดออก: {', '.join(missing)}")
+    st.warning(f"หารหัสหุ้นนี้ไม่เจอ หรือข้อมูลไม่พอ เลยตัดออก: {', '.join(missing)}")
 selected = valid_tickers
 
 if len(selected) < 2:
-    st.error("เหลือหุ้นที่ใช้งานได้น้อยกว่า 2 ตัว กรุณาเปลี่ยนรหัสหุ้นใหม่")
+    st.error("เหลือหุ้นที่ใช้ได้น้อยกว่า 2 ตัว กรุณาตรวจสอบรหัสหุ้นแล้วลองใหม่")
     st.stop()
 
-caps = load_market_caps(tuple(selected))
-use_marketcap = all(caps.get(t) for t in selected)
-shares_arr = np.array([caps.get(t) or 0 for t in selected])
+if data.empty or len(data) < train_window + test_window * 3:
+    st.error("ข้อมูลย้อนหลังไม่พอสำหรับตั้งค่านี้ ลองลดช่วง train/test หรือเพิ่มจำนวนปีย้อนหลังในตั้งค่าขั้นสูงดู")
+    st.stop()
 
-df, n_folds, n_failed, daily_returns, last_weights = run_walk_forward(
-    data, shares_arr, use_marketcap, train_window, test_window
-)
+with st.spinner("กำลังตรวจสอบมูลค่าตลาด (สำหรับกลยุทธ์ Market-cap)..."):
+    caps_raw = load_market_caps(tuple(selected))
+    clean_caps = {t: _clean_shares(caps_raw.get(t)) for t in selected}
+    use_marketcap = all(clean_caps[t] is not None for t in selected)
+    if not use_marketcap:
+        st.warning("ดึงข้อมูลมูลค่าตลาดของบางบริษัทไม่สำเร็จ — แสดงผลเฉพาะกลยุทธ์ Equal-weight และ Markowitz")
+    shares_arr = np.array([clean_caps[t] or 0 for t in selected])
+
+with st.spinner("กำลังรัน walk-forward validation..."):
+    df, n_folds, n_failed, daily_returns, last_weights = run_walk_forward(
+        data, shares_arr, use_marketcap, train_window, test_window
+    )
 
 if df.empty:
-    st.error("ข้อมูลไม่เพียงพอในการทดสอบ กรุณาลดช่วงวัน Train/Test หรือเพิ่มจำนวนปีย้อนหลัง")
+    st.error("ไม่สามารถรันได้ครบแม้แต่ 1 รอบ ลองลดค่า train/test window ในตั้งค่าขั้นสูงดู")
     st.stop()
 
 strategies = list(df["strategy"].unique())
-summary = df.groupby("strategy")[["ann_return", "ann_vol", "sharpe", "max_drawdown"]].mean().reindex(strategies)
+st.success(f"วิเคราะห์เสร็จแล้ว — ทดสอบทั้งหมด {n_folds} รอบ (walk-forward validation)")
+if n_failed:
+    st.caption(f"หมายเหตุ: การหาค่าเหมาะสมที่สุดไม่ลู่เข้าใน {n_failed}/{n_folds} รอบ (ใช้ equal-weight แทนในรอบนั้น)")
 
-# Identify Winner Strategy
+summary = df.groupby("strategy")[["ann_return", "ann_vol", "sharpe", "max_drawdown"]].mean().reindex(strategies)
 best_strategy = summary["sharpe"].idxmax()
 best_return = summary.loc[best_strategy, "ann_return"]
 best_vol = summary.loc[best_strategy, "ann_vol"]
 best_sharpe = summary.loc[best_strategy, "sharpe"]
 best_mdd = summary.loc[best_strategy, "max_drawdown"]
 
-# FRONT PAGE EXTRA! EXTRA!
-st.markdown("## 📢 ข่าวกรองการลงทุนประจำวัน: ฟันธงกลยุทธ์ผู้ชนะ")
+# ---------- เช็คนัยสำคัญทางสถิติของ "ผู้ชนะ" ก่อนใช้โทนมั่นใจ ----------
+wide = df.pivot(index="round", columns="strategy", values="sharpe")
+significantly_better_than_all = True
+for other in strategies:
+    if other == best_strategy:
+        continue
+    _, p_val = stats.ttest_rel(wide[best_strategy], wide[other])
+    if p_val >= 0.05:
+        significantly_better_than_all = False
+        break
 
-st.markdown(f"""
-<div class="winner-box">
-    <span class="badge-winner">🏆 EXTRA! กลยุทธ์ที่แนะนำที่สุดสำหรับคุณ</span>
-    <h2 style="color: #5c1d1d; margin-top: 12px; margin-bottom: 5px; font-family: 'Cinzel', serif;">{best_strategy}</h2>
-    <p style="font-size: 1.05rem; color: #2b2013; line-height: 1.6;">
-        จากการทดสอบย้อนหลัง <b>{years_back} ปี</b> (ทดสอบทั้งหมด {n_folds} ไตรมาส) กลยุทธ์นี้พิสูจน์แล้วว่าให้ 
-        <b>ความคุ้มค่าเทียบกับความเสี่ยงสูงที่สุด</b> ช่วยปกป้องเงินทุนของคุณจากสภาวะตลาดผันผวนได้อย่างทรงประสิทธิภาพที่สุด
-    </p>
-</div>
-""", unsafe_allow_html=True)
+st.subheader("สรุปผล: กลยุทธ์ที่ Sharpe ดีที่สุดในการทดสอบนี้")
+if significantly_better_than_all:
+    st.success(
+        f"**{best_strategy}** ให้ Sharpe ratio ดีที่สุด และแตกต่างจากกลยุทธ์อื่นทุกตัวอย่างมีนัยสำคัญทางสถิติ (p < 0.05) "
+        f"ในการทดสอบ {n_folds} รอบนี้"
+    )
+else:
+    st.info(
+        f"**{best_strategy}** ให้ Sharpe ratio เฉลี่ยสูงสุดในการทดสอบนี้ แต่ยัง**ไม่ต่างจากกลยุทธ์อื่นอย่างมีนัยสำคัญทางสถิติ** "
+        f"(ดูตาราง p-value ในส่วนวิเคราะห์เชิงลึกด้านล่าง) — ควรตีความว่า \"ยังแยกไม่ออกชัดเจนว่าวิธีไหนดีกว่าจริง\" มากกว่าฟันธงว่าตัวนี้ชนะ"
+    )
 
-# ACTION PLAN (ALLOCATION IN BAHT)
-st.markdown("### 💰 ใบสั่งซื้อและจัดสรรเงินทุนจริง (Action Plan)")
-st.caption(f"หากนำเงินทุนเริ่มต้น **{capital:,.0f} บาท** มากระจายตามกลยุทธ์ผู้ชนะ จะได้แผนแบ่งซื้อดังนี้:")
-
+# ---------- ตัวอย่างการจัดสรรเงิน ----------
+st.markdown("#### ตัวอย่างการจัดสรรเงินตามกลยุทธ์นี้")
 winner_weights = last_weights[best_strategy]
 action_plan = []
 for ticker, weight in zip(selected, winner_weights):
-    allocated_amount = capital * weight
     action_plan.append({
-        "รหัสหุ้น (Ticker)": ticker,
-        "สัดส่วนการลงทุน (%)": f"{weight * 100:.2f}%",
-        "จำนวนเงินที่ต้องจัดซื้อ (บาท)": f"{allocated_amount:,.2f} บาท"
+        "รหัสหุ้น": ticker,
+        "สัดส่วน (%)": f"{weight * 100:.2f}%",
+        "จำนวนเงิน (บาท)": f"{capital * weight:,.2f}",
     })
-
-action_df = pd.DataFrame(action_plan)
-st.dataframe(action_df, use_container_width=True, hide_index=True)
-
-st.markdown("---")
-st.markdown("### 📊 บันทึกตัวเลขคาดการณ์สำคัญของพอร์ตผู้ชนะ")
+st.dataframe(pd.DataFrame(action_plan), use_container_width=True, hide_index=True)
+st.caption("ตัวเลขนี้มาจากสัดส่วนของรอบล่าสุดที่คำนวณได้ ใช้เพื่อประกอบการอธิบายวิธีการเท่านั้น ไม่ใช่คำแนะนำการลงทุนจริง")
 
 col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-
 with col_m1:
-    st.metric(
-        label="ผลตอบแทนเฉลี่ยต่อปี", 
-        value=f"{best_return * 100:.1f}%",
-        help="คาดการณ์เปอร์เซ็นต์กำไรทบต้นที่พอร์ตทำได้ในแต่ละปี"
-    )
-    st.caption("📈 กำไรคาดหวังต่อปี")
-
+    st.metric("ผลตอบแทนเฉลี่ยต่อปี", f"{best_return * 100:.1f}%")
 with col_m2:
-    st.metric(
-        label="ระดับความเหวี่ยง (Volatility)", 
-        value=f"{best_vol * 100:.1f}%",
-        help="ถ้าน้อยแปลว่าพอร์ตวิ่งนิ่งๆ ถ้ามากแปลว่าราคาพอร์ตเหวี่ยงขึ้นลงหวือหวา"
-    )
-    st.caption("กระเพื่อมของราคาต่อปี")
-
+    st.metric("ความผันผวนต่อปี", f"{best_vol * 100:.1f}%")
 with col_m3:
-    st.metric(
-        label="คะแนนความคุ้มค่า (Sharpe)", 
-        value=f"{best_sharpe:.2f}",
-        help="ยิ่งสูงยิ่งดี! แสดงว่ากำไรที่ได้ คุ้มค่ากับความเหวี่ยงที่คุณต้องเจอ"
-    )
-    st.caption("⭐ ยิ่งสูง ยิ่งคุ้มเสี่ยง")
-
+    st.metric("Sharpe ratio", f"{best_sharpe:.2f}")
 with col_m4:
-    st.metric(
-        label="ช่วงดอยหนักสุด (Max Drawdown)", 
-        value=f"{best_mdd * 100:.1f}%",
-        help="เปอร์เซ็นต์การขาดทุนชั่วคราวสูงสุดที่เคยเกิดขึ้นในอดีต"
-    )
-    st.caption("🔻 ขาดทุนชั่วคราวลึกสุด")
+    st.metric("Max Drawdown", f"{best_mdd * 100:.1f}%")
 
-st.markdown("---")
-st.subheader("⚖️ ตารางเปรียบเทียบผลลัพธ์ทั้ง 3 กลยุทธ์")
-
+st.markdown("#### ตารางเปรียบเทียบทั้ง 3 กลยุทธ์ (ค่าเฉลี่ยตลอดทุกรอบ)")
 display_summary = summary.copy()
 display_summary["ann_return"] = (display_summary["ann_return"] * 100).round(1).astype(str) + "%"
 display_summary["ann_vol"] = (display_summary["ann_vol"] * 100).round(1).astype(str) + "%"
 display_summary["max_drawdown"] = (display_summary["max_drawdown"] * 100).round(1).astype(str) + "%"
 display_summary["sharpe"] = display_summary["sharpe"].round(2)
-
-display_summary.columns = [
-    "ผลตอบแทนต่อปี (%)", 
-    "ความเหวี่ยงต่อปี (%)", 
-    "คะแนนความคุ้มค่า (Sharpe)", 
-    "ดอยหนักสุดในอดีต (%)"
-]
-
+display_summary.columns = ["ผลตอบแทน/ปี", "ความผันผวน/ปี", "Sharpe ratio", "Max Drawdown"]
 st.dataframe(display_summary, use_container_width=True)
+st.caption("ตารางนี้ยังไม่รวมค่าธรรมเนียมการซื้อขาย (ดูผลที่รวมค่าธรรมเนียมแล้วในกราฟเงินสะสมด้านล่าง)")
 
-st.info("""
-💡 **คำอธิบายรูปแบบการจัดพอร์ต:**
-* **A: Equal-weight:** กระจายเงินในหุ้นทุกตัวเท่ากัน เป็นวิธีที่เรียบง่ายแต่ทรงพลัง
-* **B: Markowitz:** คำนวณหาสัดส่วนที่เสี่ยงน้อยที่สุดและทำกำไรดีที่สุดด้วยคณิตศาสตร์
-* **C: Market-cap:** ลงเงินตามขนาดบริษัท บริษัทใหญ่สุดจะได้รับสัดส่วนเงินมากที่สุด
-""")
+st.info(
+    "**A: Equal-weight** — แบ่งเงินเท่ากันทุกตัว  \n"
+    "**B: Markowitz** — คำนวณสัดส่วนด้วยสูตรคณิตศาสตร์ให้ Sharpe ratio สูงสุด  \n"
+    "**C: Market-cap** — ถ่วงน้ำหนักตามมูลค่าบริษัท บริษัทใหญ่กว่าได้สัดส่วนมากกว่า"
+)
 
-st.markdown("---")
-st.subheader("📈 การเติบโตของเงินทุนสะสม (เมื่อลงทุนต่อเนื่อง)")
-
+# ---------- เงินลงทุนสะสมจริง (ทบต้นต่อเนื่อง) + เทียบ SET Index ----------
+st.subheader("เงินลงทุนสะสม ถ้าลงทุนต่อเนื่องตลอดช่วงทดสอบ (คิดทบต้น)")
 curves = cumulative_growth(daily_returns, capital, cost_pct, test_window)
 bench_raw = load_benchmark(years_back)
 
-fig_cum, ax_cum = plt.subplots(figsize=(10, 4.5))
+fig_cum, ax_cum = plt.subplots(figsize=(11, 5))
+for name, curve in curves.items():
+    ax_cum.plot(curve.index, curve.values, label=name.split(" ")[0], linewidth=1.6)
 
-palette = ["#5c1d1d", "#2d4a3e", "#2b4353"]
-for idx, (name, curve) in enumerate(curves.items()):
-    ax_cum.plot(curve.index, curve.values, label=name.split(" ")[0], linewidth=2.0, color=palette[idx % len(palette)])
-
+bench_note = ""
 if not bench_raw.empty:
     combined_index = next(iter(curves.values())).index
     bench_aligned = bench_raw.reindex(bench_raw.index.union(combined_index)).ffill().reindex(combined_index)
     if bench_aligned.notna().sum() > 10:
         bench_ret = bench_aligned.pct_change().fillna(0)
         bench_curve = capital * (1 + bench_ret).cumprod()
-        ax_cum.plot(bench_curve.index, bench_curve.values, label="ซื้อแล้วถือยาว SET Index", linewidth=1.5,
-                    linestyle="--", color="#7a6244")
+        ax_cum.plot(bench_curve.index, bench_curve.values, label="Buy & Hold SET Index", linewidth=1.8,
+                    linestyle="--", color="black")
+    else:
+        bench_note = "ข้อมูล SET Index ไม่พอสำหรับช่วงเวลานี้ แสดงเฉพาะ 3 กลยุทธ์"
+else:
+    bench_note = "ดึงข้อมูล SET Index (^SET.BK) ไม่สำเร็จ แสดงเฉพาะ 3 กลยุทธ์"
 
-ax_cum.axhline(capital, color="#8c2323", linewidth=1.0, linestyle=":", label="เงินทุนเริ่มต้น")
-ax_cum.set_xlabel("ปี / เดือน", family='serif')
-ax_cum.set_ylabel("มูลค่าพอร์ต (บาท)", family='serif')
-ax_cum.set_title(f"เส้นทางมูลค่าพอร์ตจริงจากเงินทุนเริ่มต้น {capital:,.0f} บาท (หักค่าธรรมเนียมแล้ว)", family='serif', weight='bold')
-ax_cum.legend(loc="upper left", fontsize=8, facecolor='#f4ebd9', edgecolor='#3d2f1d')
-style_fig_vintage(fig_cum, ax_cum)
-
+ax_cum.axhline(capital, color="gray", linewidth=0.7, linestyle=":")
+ax_cum.set_xlabel("วันที่")
+ax_cum.set_ylabel(f"มูลค่าพอร์ต (บาท) เริ่มจาก {capital:,.0f}")
+ax_cum.set_title(f"Cumulative growth -- includes {cost_pct*100:.2f}% cost per rebalance")
+ax_cum.legend(loc="upper left", fontsize=9)
 st.pyplot(fig_cum)
-st.caption("📌 **คำบรรยายภาพ:** กราฟลายเส้นแสดงการเติบโตของเงินทุนจริงทบต้น ยิ่งเส้นอยู่สูง แปลว่าสร้างความมั่งคั่งได้มากเท่านั้น")
+if bench_note:
+    st.caption(f"⚠️ {bench_note}")
+st.caption(
+    "เส้นนี้คือ 'เงินก้อนเดียวเดินทางต่อเนื่อง' ข้ามทุกไตรมาสจริง เส้นประดำคือ Buy & Hold SET Index "
+    "ล้วนๆ ไม่ปรับพอร์ตเลย ใช้เป็นเกณฑ์เทียบจากภายนอกที่เหมาะกับหุ้นไทยกว่าดัชนีต่างประเทศ"
+)
 
-# STRESS TEST SECTION
+# ---------- Stress Test ----------
 if stress_option != "ไม่ระบุ":
-    st.markdown("---")
-    st.subheader(f"🛡️ รายงานการทดสอบพอร์ตช่วงวิกฤต: {stress_option}")
+    st.subheader(f"ทดสอบเฉพาะช่วงวิกฤต: {stress_option}")
     stress_ranges = {
         "COVID-19 (ก.พ.–เม.ย. 2563)": ("2020-02-01", "2020-04-30"),
         "สงครามการค้าจีน-สหรัฐฯ (ม.ค.–ธ.ค. 2561)": ("2018-01-01", "2018-12-31"),
@@ -524,46 +380,62 @@ if stress_option != "ไม่ระบุ":
     s_start, s_end = stress_ranges[stress_option]
     all_returns_full = data.pct_change().dropna()
     stress_returns = all_returns_full.loc[s_start:s_end]
-    
-    if len(stress_returns) >= 5:
+    if len(stress_returns) < 5:
+        st.warning("ข้อมูลย้อนหลังที่มีไม่ครอบคลุมช่วงนี้ — ลองเพิ่ม 'ข้อมูลย้อนหลังกี่ปี' ในตั้งค่าขั้นสูง")
+    else:
         stress_rows = []
         for name, w in last_weights.items():
             total, ar, av, sh, mdd = evaluate(w, stress_returns)
-            stress_rows.append({
-                "กลยุทธ์": name, 
-                "ผลตอบแทนรวมช่วงวิกฤต": f"{total * 100:.1f}%", 
-                "ดอยหนักสุดช่วงนี้ (Max Drawdown)": f"{mdd * 100:.1f}%"
-            })
+            stress_rows.append({"กลยุทธ์": name, "ผลตอบแทนรวมช่วงนี้": f"{total:.1%}", "Max Drawdown ช่วงนี้": f"{mdd:.1%}"})
         st.dataframe(pd.DataFrame(stress_rows), use_container_width=True, hide_index=True)
-        st.caption("📌 แสดงให้เห็นว่าหากเกิดวิกฤตเศรษฐกิจ พอร์ตแต่ละแบบจะได้รับผลกระทบหนักแค่ไหน")
+        st.caption("ใช้สัดส่วนน้ำหนักจากรอบล่าสุดของแต่ละกลยุทธ์ ประเมินย้อนกลับเฉพาะช่วงวิกฤตที่เลือก (ไม่ใช่ walk-forward เต็มรูปแบบ เพราะช่วงสั้นเกินจะแบ่ง train/test ได้)")
 
-st.markdown("---")
+# ---------- ภาคผนวกวิเคราะห์เชิงลึก ----------
 with st.expander("🔬 ข้อมูลวิเคราะห์เชิงลึกทางสถิติ (สำหรับภาคผนวกโครงงานวิชาการ)"):
-    st.markdown("#### 1. ความน่าเชื่อถือทางสถิติ (Paired t-test)")
-    wide = df.pivot(index="round", columns="strategy", values="sharpe")
+    st.markdown("#### ช่วงความเชื่อมั่น 95% และนัยสำคัญทางสถิติ (Paired t-test)")
+    fig1, ax1 = plt.subplots(figsize=(7, 4.5))
+    means, errs = [], []
+    for s in strategies:
+        vals = df[df.strategy == s]["sharpe"].dropna().values
+        mean, sd = vals.mean(), vals.std(ddof=1)
+        se = sd / np.sqrt(len(vals))
+        t_crit = stats.t.ppf(0.975, df=len(vals) - 1)
+        means.append(mean)
+        errs.append(t_crit * se)
+    ax1.bar([s.split(" ")[0] for s in strategies], means, yerr=errs, capsize=8,
+            color=["#1f77b4", "#ff7f0e", "#2ca02c"][:len(strategies)], alpha=0.85)
+    ax1.axhline(0, color="gray", linewidth=0.8)
+    ax1.set_ylabel(f"Sharpe ratio (mean of {n_folds} folds)")
+    ax1.set_title("Sharpe ratio with 95% confidence interval")
+    st.pyplot(fig1)
+
     rows = []
     for i in range(len(strategies)):
         for j in range(i + 1, len(strategies)):
             s1, s2 = strategies[i], strategies[j]
             t_stat, p_val = stats.ttest_rel(wide[s1], wide[s2])
             rows.append({
-                "คู่เปรียบเทียบ": f"{s1.split(' ')[0]} vs {s2.split(' ')[0]}",
-                "p-value": round(p_val, 4),
-                "สรุปความต่างทางสถิติ": "แตกต่างกันอย่างมีนัยสำคัญ (p < 0.05)" if p_val < 0.05 else "ยังสรุปไม่ได้ว่าต่างกันชัดเจน (p ≥ 0.05)"
+                "เปรียบเทียบ": f"{s1.split(' ')[0]} vs {s2.split(' ')[0]}",
+                "p-value": round(p_val, 3),
+                "สรุป": "ต่างกันจริง (มีนัยสำคัญ, p<0.05)" if p_val < 0.05 else "ยังสรุปไม่ได้ชัดเจน (p≥0.05)",
             })
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
-    st.markdown("#### 2. เส้นพรมแดนประสิทธิภาพ (Efficient Frontier)")
+    st.markdown("#### เส้นพรมแดนประสิทธิภาพ (Efficient Frontier) จากหุ้นที่เลือกจริง")
     all_returns_full = data.pct_change().dropna()
     fig_ef = efficient_frontier_fig(all_returns_full, last_weights)
     st.pyplot(fig_ef)
-    st.caption("จุดสีสุ่มคือสัดส่วนการลงทุน 2,500 รูปแบบ กลยุทธ์ที่ดีควรอยู่ชิดขอบบนซ้ายของกลุ่มจุด")
+    st.caption("จุดสีคือพอร์ตสุ่ม 2,500 แบบจากหุ้นที่เลือกจริง สัญลักษณ์ขอบดำคือตำแหน่งของแต่ละกลยุทธ์ (สัดส่วนจากรอบล่าสุด)")
 
     csv = df.to_csv(index=False).encode("utf-8-sig")
-    st.download_button("⬇️ ดาวน์โหลดบันทึกข้อมูลดิบการทดสอบเป็นไฟล์ CSV", csv, "vintage_portfolio_backtest.csv", "text/csv")
+    st.download_button("⬇️ ดาวน์โหลดผลดิบทุกรอบเป็น CSV", csv, "walk_forward_results.csv", "text/csv")
 
 st.divider()
 st.caption(
-    "📜 **ข้อควรระวัง:** ผลลัพธ์ทั้งหมดคำนวณจากบันทึกราคาหุ้นย้อนหลังในอดีต (Backtest) เพื่อการศึกษาในโครงงานเท่านั้น "
-    "มิใช่คำแนะนำทางการเงินหรือการรับประกันผลตอบแทนในอนาคต"
-    )
+    "⚠️ ผลลัพธ์ทั้งหมดคำนวณจากข้อมูลราคาหุ้นในอดีต (backtest) เท่านั้น ไม่ใช่การรับประกันผลตอบแทนในอนาคต "
+    "ยังไม่รวมภาษี เครื่องมือนี้จัดทำเพื่อการศึกษาในโครงงานวิทยาศาสตร์ ไม่ใช่คำแนะนำการลงทุน\n\n"
+    "ข้อสมมติที่ควรรู้: (1) Sharpe ratio คำนวณโดยตั้ง risk-free rate = 0 เพื่อความง่าย "
+    "(2) กลยุทธ์ Market-cap ใช้จำนวนหุ้นที่ออกจำหน่ายปัจจุบัน คูณราคาย้อนหลัง เป็นค่าประมาณมูลค่าตลาดในอดีต "
+    "ไม่ใช่มูลค่าตลาดจริงในวันนั้น (3) แต่ละรอบ walk-forward ใช้ข้อมูล train ที่ทับซ้อนกันบางส่วน จึงไม่เป็นอิสระจากกันทั้งหมด "
+    "ผลการทดสอบนัยสำคัญทางสถิติจึงควรตีความอย่างระมัดระวัง"
+)
